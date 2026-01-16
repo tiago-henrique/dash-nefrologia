@@ -12,12 +12,12 @@ st.set_page_config(
 )
 
 st.title("Análise de Sobrevida – Transplante Renal")
-uploaded_file = "https://imunogenetica.famerp.br/nefrologia/indicadores.csv";
+#uploaded_file = "https://imunogenetica.famerp.br/nefrologia/indicadores.csv";
 
-#uploaded_file = st.file_uploader(
-#    "Envie o arquivo CSV",
-#    type="csv"
-#)
+uploaded_file = st.file_uploader(
+    "Envie o arquivo CSV",
+    type="csv"
+)
 
 if uploaded_file:
 
