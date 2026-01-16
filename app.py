@@ -171,7 +171,7 @@ with col1:
         ax=ax,
         ci_show=False,
         color="black",
-        linestyle="--",
+        #linestyle="--",
         linewidth=3
     )
 
@@ -199,7 +199,7 @@ with col2:
         ax=ax,
         ci_show=False,
         color="black",
-        linestyle="--",
+        #linestyle="--",
         linewidth=3
     )
 
