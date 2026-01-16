@@ -169,7 +169,7 @@ with col1:
     kmf_global.fit(df["tempo_obito"], df["evento_obito"], label="Global")
     kmf_global.plot(
         ax=ax,
-        ci_show=True,
+        ci_show=False,
         color="black",
         linestyle="--",
         linewidth=3
