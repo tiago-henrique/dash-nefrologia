@@ -185,6 +185,7 @@ if uploaded_file:
 
         ax1.set_xlabel("Dias após o transplante")
         ax1.set_ylabel("Probabilidade de Sobrevida")
+        ax1.set_ylim(0.84, 1.00)
         ax1.grid(True)
         st.pyplot(fig1)
 
@@ -215,5 +216,6 @@ if uploaded_file:
 
         ax2.set_xlabel("Dias após o transplante")
         ax2.set_ylabel("Probabilidade de Sobrevida do Enxerto")
+        ax2.set_ylim(0.84, 1.00)
         ax2.grid(True)
         st.pyplot(fig2)
