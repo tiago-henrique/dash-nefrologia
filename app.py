@@ -6,29 +6,24 @@ from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
 from datetime import datetime
 
-# ================= CONFIGURAÇÃO =================
 st.set_page_config(
     page_title="Kaplan-Meier – Transplante Renal",
     layout="wide"
 )
 
 st.title("Análise de Sobrevida – Transplante Renal")
-
-# ================= LEITURA =================
 uploaded_file = "https://imunogenetica.famerp.br/dash/nefrologia/indicadores.csv"
 
 if uploaded_file:
 
     df = pd.read_csv(uploaded_file)
 
-    # ================= TRATAMENTO DE DATAS =================
     for col in ["data_tx", "data_obito", "data_pe"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
     df["ano_tx"] = df["data_tx"].dt.year
     data_censura = pd.to_datetime(datetime.today().date())
 
-    # ================= EVENTOS =================
     df["evento_obito"] = df["data_obito"].notna().astype(int)
     df["tempo_obito"] = (
         df["data_obito"].fillna(data_censura) - df["data_tx"]
@@ -39,13 +34,11 @@ if uploaded_file:
         df["data_pe"].fillna(data_censura) - df["data_tx"]
     ).dt.days
 
-    # ===== CONVERSÃO PARA ANOS =====
     df["tempo_obito_anos"] = df["tempo_obito"] / 365.25
     df["tempo_pe_anos"] = df["tempo_pe"] / 365.25
 
     anos = sorted(df["ano_tx"].dropna().unique())
 
-    # ================= RESUMO POR ANO =================
     tabela_resumo = (
         df.groupby("ano_tx")
         .agg(
@@ -68,11 +61,9 @@ if uploaded_file:
     st.subheader("Resumo de Eventos por Ano do Transplante")
     st.dataframe(tabela_resumo, use_container_width=True)
 
-    # ================= COMPARAÇÕES LOG-RANK =================
     comparacoes = [(a1, a2) for i, a1 in enumerate(anos)
                    for a2 in anos[i+1:]]
 
-    # ÓBITO
     st.subheader("Comparação Estatística – Óbito (Log-rank)")
     resultados_obito = []
 
@@ -94,7 +85,6 @@ if uploaded_file:
     st.dataframe(pd.DataFrame(resultados_obito),
                  use_container_width=True)
 
-    # PERDA ENXERTO
     st.subheader("Comparação Estatística – Perda de Enxerto (Log-rank)")
     resultados_pe = []
 
@@ -118,9 +108,7 @@ if uploaded_file:
 
     st.caption("Teste de Log-rank: p < 0,05 indica diferença significativa.")
 
-    # ================= SOBREVIDA 1, 3 E 5 ANOS =================
     st.subheader("Sobrevida do Paciente em 1, 3 e 5 anos")
-
     linhas = []
     for ano in anos:
         dados = df[df["ano_tx"] == ano]
@@ -138,7 +126,6 @@ if uploaded_file:
     st.dataframe(pd.DataFrame(linhas),
                  use_container_width=True)
 
-    # ================= CONFIG EIXOS =================
     def eixo_prob(ax, ylabel):
         ax.set_xlabel("Tempo após o transplante (anos)")
         ax.set_ylabel(ylabel)
@@ -157,7 +144,6 @@ if uploaded_file:
 
     col1, col2 = st.columns(2)
 
-    # ================= PACIENTE =================
     with col1:
 
         st.subheader("Paciente – Probabilidade")
@@ -196,7 +182,6 @@ if uploaded_file:
         eixo_percent(ax2, "Sobrevida (%)")
         st.pyplot(fig2)
 
-    # ================= ENXERTO =================
     with col2:
 
         st.subheader("Enxerto – Probabilidade")
