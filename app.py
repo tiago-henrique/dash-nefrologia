@@ -12,18 +12,21 @@ st.set_page_config(
 )
 
 st.title("Análise de Sobrevida – Transplante Renal")
+
 uploaded_file = "https://imunogenetica.famerp.br/dash/nefrologia/indicadores.csv"
 
 if uploaded_file:
 
     df = pd.read_csv(uploaded_file)
 
+    # ================= TRATAMENTO DE DATAS =================
     for col in ["data_tx", "data_obito", "data_pe"]:
         df[col] = pd.to_datetime(df[col], errors="coerce")
 
     df["ano_tx"] = df["data_tx"].dt.year
     data_censura = pd.to_datetime(datetime.today().date())
 
+    # ================= EVENTOS =================
     df["evento_obito"] = df["data_obito"].notna().astype(int)
     df["tempo_obito"] = (
         df["data_obito"].fillna(data_censura) - df["data_tx"]
@@ -82,8 +85,7 @@ if uploaded_file:
                 "p-valor": round(res.p_value, 4)
             })
 
-    st.dataframe(pd.DataFrame(resultados_obito),
-                 use_container_width=True)
+    st.dataframe(pd.DataFrame(resultados_obito), use_container_width=True)
 
     st.subheader("Comparação Estatística – Perda de Enxerto (Log-rank)")
     resultados_pe = []
@@ -103,28 +105,48 @@ if uploaded_file:
                 "p-valor": round(res.p_value, 4)
             })
 
-    st.dataframe(pd.DataFrame(resultados_pe),
-                 use_container_width=True)
+    st.dataframe(pd.DataFrame(resultados_pe), use_container_width=True)
 
-    st.caption("Teste de Log-rank: p < 0,05 indica diferença significativa.")
+    st.subheader("Sobrevida do Paciente em 1, 2 e 5 anos")
 
-    st.subheader("Sobrevida do Paciente em 1, 3 e 5 anos")
     linhas = []
     for ano in anos:
         dados = df[df["ano_tx"] == ano]
         if len(dados) > 0:
             kmf = KaplanMeierFitter()
             kmf.fit(dados["tempo_obito_anos"], dados["evento_obito"])
-
             linhas.append({
                 "Ano": ano,
                 "1 ano (%)": round(kmf.predict(1) * 100, 1),
-                "3 anos (%)": round(kmf.predict(3) * 100, 1),
+                "2 anos (%)": round(kmf.predict(2) * 100, 1),
                 "5 anos (%)": round(kmf.predict(5) * 100, 1),
             })
 
-    st.dataframe(pd.DataFrame(linhas),
-                 use_container_width=True)
+    st.dataframe(pd.DataFrame(linhas), use_container_width=True)
+
+    total_global = len(df)
+    total_obitos = df["evento_obito"].sum()
+    total_pe = df["evento_pe"].sum()
+
+    tabela_global = pd.DataFrame({
+        "Total Transplantes": [total_global],
+        "Óbitos": [total_obitos],
+        "Taxa Óbito (%)": [round(total_obitos / total_global * 100, 1)],
+        "Perda de Enxerto": [total_pe],
+        "Taxa Perda Enxerto (%)": [round(total_pe / total_global * 100, 1)]
+    })
+
+    st.subheader("Análise Global da Coorte")
+    st.dataframe(tabela_global, use_container_width=True)
+
+    kmf_global_obito = KaplanMeierFitter()
+    kmf_global_obito.fit(df["tempo_obito_anos"], df["evento_obito"], label="Global")
+
+    kmf_global_pe = KaplanMeierFitter()
+    kmf_global_pe.fit(df["tempo_pe_anos"], df["evento_pe"], label="Global")
+
+    cores = {ano: cor for ano, cor in zip(anos,
+             ["tab:blue", "tab:orange", "tab:green", "tab:red"])}
 
     def eixo_prob(ax, ylabel):
         ax.set_xlabel("Tempo após o transplante (anos)")
@@ -139,9 +161,6 @@ if uploaded_file:
         ax.yaxis.set_major_formatter(PercentFormatter(100))
         ax.grid(True)
 
-    cores = {ano: cor for ano, cor in zip(anos,
-             ["tab:blue", "tab:orange", "tab:green", "tab:red"])}
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -152,14 +171,14 @@ if uploaded_file:
 
         for ano in anos:
             dados = df[df["ano_tx"] == ano]
-            kmf.fit(dados["tempo_obito_anos"],
-                    dados["evento_obito"],
-                    label=str(ano))
-            kmf.plot(ax=ax1, ci_show=False,
-                     linewidth=2,
-                     color=cores.get(ano))
+            kmf.fit(dados["tempo_obito_anos"], dados["evento_obito"], label=str(ano))
+            kmf.plot(ax=ax1, ci_show=False, linewidth=2, color=cores.get(ano))
+
+        kmf_global_obito.plot(ax=ax1, ci_show=False,
+                              color="black", linestyle="--", linewidth=3)
 
         eixo_prob(ax1, "Probabilidade de Sobrevida")
+        ax1.legend(title="Ano do Transplante")
         st.pyplot(fig1)
 
         st.subheader("Paciente – Porcentagem")
@@ -167,19 +186,24 @@ if uploaded_file:
 
         for ano in anos:
             dados = df[df["ano_tx"] == ano]
-            kmf.fit(dados["tempo_obito_anos"],
-                    dados["evento_obito"],
-                    label=str(ano))
+            kmf.fit(dados["tempo_obito_anos"], dados["evento_obito"], label=str(ano))
+            ax2.step(kmf.survival_function_.index,
+                     kmf.survival_function_[str(ano)] * 100,
+                     where="post",
+                     linewidth=2,
+                     color=cores.get(ano),
+                     label=str(ano))
 
-            ax2.step(
-                kmf.survival_function_.index,
-                kmf.survival_function_[str(ano)] * 100,
-                where="post",
-                linewidth=2,
-                color=cores.get(ano)
-            )
+        ax2.step(kmf_global_obito.survival_function_.index,
+                 kmf_global_obito.survival_function_["Global"] * 100,
+                 where="post",
+                 linewidth=3,
+                 linestyle="--",
+                 color="black",
+                 label="Global")
 
         eixo_percent(ax2, "Sobrevida (%)")
+        ax2.legend(title="Ano do Transplante")
         st.pyplot(fig2)
 
     with col2:
@@ -190,14 +214,14 @@ if uploaded_file:
 
         for ano in anos:
             dados = df[df["ano_tx"] == ano]
-            kmf.fit(dados["tempo_pe_anos"],
-                    dados["evento_pe"],
-                    label=str(ano))
-            kmf.plot(ax=ax3, ci_show=False,
-                     linewidth=2,
-                     color=cores.get(ano))
+            kmf.fit(dados["tempo_pe_anos"], dados["evento_pe"], label=str(ano))
+            kmf.plot(ax=ax3, ci_show=False, linewidth=2, color=cores.get(ano))
+
+        kmf_global_pe.plot(ax=ax3, ci_show=False,
+                           color="black", linestyle="--", linewidth=3)
 
         eixo_prob(ax3, "Probabilidade de Sobrevida do Enxerto")
+        ax3.legend(title="Ano do Transplante")
         st.pyplot(fig3)
 
         st.subheader("Enxerto – Porcentagem")
@@ -205,17 +229,22 @@ if uploaded_file:
 
         for ano in anos:
             dados = df[df["ano_tx"] == ano]
-            kmf.fit(dados["tempo_pe_anos"],
-                    dados["evento_pe"],
-                    label=str(ano))
+            kmf.fit(dados["tempo_pe_anos"], dados["evento_pe"], label=str(ano))
+            ax4.step(kmf.survival_function_.index,
+                     kmf.survival_function_[str(ano)] * 100,
+                     where="post",
+                     linewidth=2,
+                     color=cores.get(ano),
+                     label=str(ano))
 
-            ax4.step(
-                kmf.survival_function_.index,
-                kmf.survival_function_[str(ano)] * 100,
-                where="post",
-                linewidth=2,
-                color=cores.get(ano)
-            )
+        ax4.step(kmf_global_pe.survival_function_.index,
+                 kmf_global_pe.survival_function_["Global"] * 100,
+                 where="post",
+                 linewidth=3,
+                 linestyle="--",
+                 color="black",
+                 label="Global")
 
         eixo_percent(ax4, "Sobrevida do Enxerto (%)")
+        ax4.legend(title="Ano do Transplante")
         st.pyplot(fig4)
