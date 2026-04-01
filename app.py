@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("Análise de Sobrevida – Transplante Renal")
-uploaded_file = pd.read_excel(st.secrets['DATABASE'])
+uploaded_file = st.secrets['DATABASE']
 
 if uploaded_file:
 
