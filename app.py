@@ -12,8 +12,7 @@ st.set_page_config(
 )
 
 st.title("Análise de Sobrevida – Transplante Renal")
-
-uploaded_file = "https://imunogenetica.famerp.br/dash/nefrologia/indicadores.csv"
+uploaded_file = pd.read_excel(st.secrets['DATABASE'])
 
 if uploaded_file:
 
