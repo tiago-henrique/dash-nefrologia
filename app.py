@@ -6,6 +6,9 @@ from matplotlib.ticker import PercentFormatter
 from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
 from datetime import datetime
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
+import streamlit as st
 
 # ================= CONFIGURAÇÃO =================
 st.set_page_config(
@@ -18,9 +21,20 @@ st.title("Análise de Sobrevida – Transplante Renal")
 # ================= LEITURA =================
 
 file_path = st.secrets["CAMINHO"]
+
 response = requests.head(file_path)
 last_modified = response.headers.get("Last-Modified")
-st.success(f'Dados atualizados em: {last_modified}')
+
+if last_modified:
+    dt_utc = parsedate_to_datetime(last_modified)
+    dt_br = dt_utc.astimezone(ZoneInfo("America/Sao_Paulo"))
+
+    st.success(
+        f"Dados atualizados em: {dt_br.strftime('%d/%m/%Y %H:%M:%S')}"
+    )
+else:
+    st.warning("Cabeçalho Last-Modified não encontrado.")
+
 # Carregar base
 try:
     uploaded_file = pd.read_csv(st.secrets['DATABASE'])
