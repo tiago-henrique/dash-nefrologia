@@ -20,32 +20,32 @@ st.title("Análise de Sobrevida – Transplante Renal")
 
 # ================= LEITURA =================
 
-#file_path = st.secrets["CAMINHO"]
+file_path = st.secrets["CAMINHO"]
 
-#response = requests.head(file_path)
-#last_modified = response.headers.get("Last-Modified")
+response = requests.head(file_path)
+last_modified = response.headers.get("Last-Modified")
 
-#if last_modified:
-#    dt_utc = parsedate_to_datetime(last_modified)
-#    dt_br = dt_utc.astimezone(ZoneInfo("America/Sao_Paulo"))
+if last_modified:
+    dt_utc = parsedate_to_datetime(last_modified)
+    dt_br = dt_utc.astimezone(ZoneInfo("America/Sao_Paulo"))
 
-#    st.success(
-#        f"Dados atualizados em: {dt_br.strftime('%d/%m/%Y %H:%M:%S')}"
-#    )
-#else:
-#    st.warning("Cabeçalho Last-Modified não encontrado.")
+    st.success(
+        f"Dados atualizados em: {dt_br.strftime('%d/%m/%Y %H:%M:%S')}"
+    )
+else:
+    st.warning("Cabeçalho Last-Modified não encontrado.")
 
 # Carregar base
-#try:
-#    uploaded_file = pd.read_csv(st.secrets['DATABASE'])
-#except Exception as e:
-#    st.error(f"Erro ao carregar o banco de dados: {e}")
-#    st.stop()
+try:
+    uploaded_file = pd.read_csv(st.secrets['DATABASE'])
+except Exception as e:
+    st.error(f"Erro ao carregar o banco de dados: {e}")
+    st.stop()
 
-#df = uploaded_file
+df = uploaded_file
 
-uploaded_file = "indicadores.csv"
-df = pd.read_csv(uploaded_file)
+#uploaded_file = "indicadores.csv"
+#df = pd.read_csv(uploaded_file)
 
 # ================= TRATAMENTO DE DATAS =================
 for col in ["data_tx", "data_obito", "data_pe"]:
