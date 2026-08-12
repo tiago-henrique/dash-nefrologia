@@ -494,12 +494,14 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         fig1, ax1 = plt.subplots()
         kmf = KaplanMeierFitter()
 
-        for ano in anos_tipo:
-            dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
-            if len(dados_ano) == 0:
-                continue
-            kmf.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"], label=str(int(ano)))
-            kmf.plot(ax=ax1, ci_show=False, linewidth=2, color=cores_tipo.get(ano))
+        # ---- Curvas individuais por ano do transplante (COMENTADO) ----
+        # Mantida apenas a curva "Global" do subgrupo (SCD / ECD / KDPI > 85%).
+        # for ano in anos_tipo:
+        #     dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #     if len(dados_ano) == 0:
+        #         continue
+        #     kmf.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"], label=str(int(ano)))
+        #     kmf.plot(ax=ax1, ci_show=False, linewidth=2, color=cores_tipo.get(ano))
 
         kmf_global_pac.plot(ax=ax1, ci_show=False, color="black", linestyle="--", linewidth=3)
         eixo_prob(ax1, "Probabilidade de Sobrevida")
@@ -509,14 +511,16 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         st.subheader("Paciente – Porcentagem")
         fig2, ax2 = plt.subplots()
 
-        for ano in anos_tipo:
-            dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
-            if len(dados_ano) == 0:
-                continue
-            kmf.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"], label=str(int(ano)))
-            ax2.step(kmf.survival_function_.index,
-                     kmf.survival_function_[str(int(ano))] * 100,
-                     where="post", linewidth=2, color=cores_tipo.get(ano), label=str(int(ano)))
+        # ---- Curvas individuais por ano do transplante (COMENTADO) ----
+        # Mantida apenas a curva "Global" do subgrupo (SCD / ECD / KDPI > 85%).
+        # for ano in anos_tipo:
+        #     dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #     if len(dados_ano) == 0:
+        #         continue
+        #     kmf.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"], label=str(int(ano)))
+        #     ax2.step(kmf.survival_function_.index,
+        #              kmf.survival_function_[str(int(ano))] * 100,
+        #              where="post", linewidth=2, color=cores_tipo.get(ano), label=str(int(ano)))
 
         ax2.step(kmf_global_pac.survival_function_.index,
                  kmf_global_pac.survival_function_["Global"] * 100,
