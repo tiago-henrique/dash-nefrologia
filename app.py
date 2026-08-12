@@ -535,12 +535,12 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         fig3, ax3 = plt.subplots()
         kmf = KaplanMeierFitter()
 
-        for ano in anos_tipo:
-            dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
-            if len(dados_ano) == 0:
-                continue
-            kmf.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"], label=str(int(ano)))
-            kmf.plot(ax=ax3, ci_show=False, linewidth=2, color=cores_tipo.get(ano))
+        #for ano in anos_tipo:
+        #    dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #    if len(dados_ano) == 0:
+        #        continue
+        #    kmf.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"], label=str(int(ano)))
+        #    kmf.plot(ax=ax3, ci_show=False, linewidth=2, color=cores_tipo.get(ano))
 
         kmf_global_enx.plot(ax=ax3, ci_show=False, color="black", linestyle="--", linewidth=3)
         eixo_prob(ax3, "Probabilidade de Sobrevida do Enxerto")
