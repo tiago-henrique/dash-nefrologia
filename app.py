@@ -47,14 +47,12 @@ df = uploaded_file
 #uploaded_file = "indicadores.csv"
 #df = pd.read_csv(uploaded_file)
 
-# ================= TRATAMENTO DE DATAS =================
 for col in ["data_tx", "data_obito", "data_pe"]:
     df[col] = pd.to_datetime(df[col], errors="coerce")
 
 df["ano_tx"] = df["data_tx"].dt.year
 data_censura = pd.to_datetime(datetime.today().date())
 
-# ================= EVENTOS =================
 df["evento_obito"] = df["data_obito"].notna().astype(int)
 df["tempo_obito"] = (
     df["data_obito"].fillna(data_censura) - df["data_tx"]
@@ -70,9 +68,6 @@ df["tempo_pe_anos"] = df["tempo_pe"] / 365.25
 
 anos = sorted(df["ano_tx"].dropna().unique())
 
-# ==========================================================
-# 🔹 RESUMO DE EVENTOS POR ANO
-# ==========================================================
 tabela_resumo = (
     df.groupby("ano_tx")
     .agg(
@@ -95,9 +90,6 @@ tabela_resumo["taxa_perda_enxerto_%"] = (
 st.subheader("Resumo de Eventos por Ano do Transplante")
 st.dataframe(tabela_resumo, use_container_width=True)
 
-# ==========================================================
-# 🔹 COMPARAÇÃO ESTATÍSTICA (LOG-RANK)
-# ==========================================================
 comparacoes = [(a1, a2) for i, a1 in enumerate(anos)
                 for a2 in anos[i+1:]]
 
@@ -141,9 +133,6 @@ for a1, a2 in comparacoes:
 
 st.dataframe(pd.DataFrame(resultados_pe), use_container_width=True)
 
-# ==========================================================
-# 🔹 SOBREVIDA EM 1, 2 E 5 ANOS
-# ==========================================================
 st.subheader("Sobrevida do Paciente em 1, 2 e 5 anos")
 
 linhas = []
@@ -161,9 +150,6 @@ for ano in anos:
 
 st.dataframe(pd.DataFrame(linhas), use_container_width=True)
 
-    # ==========================================================
-# 🔹 ANÁLISE GLOBAL
-# ==========================================================
 total_global = len(df)
 total_obitos = df["evento_obito"].sum()
 total_pe = df["evento_pe"].sum()
@@ -179,18 +165,12 @@ tabela_global = pd.DataFrame({
 st.subheader("Análise Global da Coorte")
 st.dataframe(tabela_global, use_container_width=True)
 
-# ==========================================================
-# 🔹 CURVAS KM (PROBABILIDADE E PORCENTAGEM)
-# ==========================================================
 kmf_global_obito = KaplanMeierFitter()
 kmf_global_obito.fit(df["tempo_obito_anos"], df["evento_obito"], label="Global")
 
 kmf_global_pe = KaplanMeierFitter()
 kmf_global_pe.fit(df["tempo_pe_anos"], df["evento_pe"], label="Global")
 
-# Cores geradas dinamicamente a partir de um colormap, para suportar
-# automaticamente qualquer quantidade de anos (inclusive novos anos
-# que forem inseridos futuramente no dataset).
 def gerar_mapa_cores(lista_valores, colormap_nome="tab10"):
     cmap = plt.get_cmap(colormap_nome if len(lista_valores) <= 10 else "tab20")
     return {valor: cmap(i % cmap.N) for i, valor in enumerate(lista_valores)}
@@ -212,10 +192,7 @@ def eixo_percent(ax, ylabel):
 
 col1, col2 = st.columns(2)
 
-# ================= PACIENTE =================
 with col1:
-
-    # PROBABILIDADE
     st.subheader("Paciente – Probabilidade")
     fig1, ax1 = plt.subplots()
     kmf = KaplanMeierFitter()
@@ -232,7 +209,6 @@ with col1:
     ax1.legend(title="Ano do Transplante")
     st.pyplot(fig1)
 
-    # PORCENTAGEM
     st.subheader("Paciente – Porcentagem")
     fig2, ax2 = plt.subplots()
 
@@ -258,10 +234,8 @@ with col1:
     ax2.legend(title="Ano do Transplante")
     st.pyplot(fig2)
 
-# ================= ENXERTO =================
 with col2:
 
-    # PROBABILIDADE
     st.subheader("Enxerto – Probabilidade")
     fig3, ax3 = plt.subplots()
     kmf = KaplanMeierFitter()
@@ -278,7 +252,6 @@ with col2:
     ax3.legend(title="Ano do Transplante")
     st.pyplot(fig3)
 
-    # PORCENTAGEM
     st.subheader("Enxerto – Porcentagem")
     fig4, ax4 = plt.subplots()
 
@@ -304,72 +277,25 @@ with col2:
     ax4.legend(title="Ano do Transplante")
     st.pyplot(fig4)
 
-# ==========================================================
-# ==========================================================
-# 🔹 NOVAS ANÁLISES: SOBREVIDA POR TIPO DE DOADOR (SCD / ECD / KDPI > 85%)
-# ==========================================================
-# ==========================================================
-#
-# ⚠️ EDITAR AQUI — MAPEAMENTO DAS COLUNAS DO DATASET ⚠️
-# ----------------------------------------------------------
-# Ajuste os três nomes de coluna abaixo para os nomes REAIS que existem
-# no seu arquivo de dados (df / CSV). O restante do código funciona
-# automaticamente a partir dessas colunas.
-#
-#   COL_TIPO_DOADOR -> coluna de texto única indicando "SCD" ou "ECD"
-#   COL_KDPI        -> coluna numérica do KDPI (0 a 100). A partir dela o
-#                      script cria automaticamente o grupo "KDPI > 85%".
-#
-# Se no seu CSV essas colunas tiverem outro nome (ex: "tipo_doador",
-# "SCD_ECD", "kdpi_pct" etc.), basta trocar o valor das strings abaixo:
 
-COL_TIPO_DOADOR = "classificacao_automatica"   # <-- EDITAR AQUI: nome da coluna única com texto "SCD"/"ECD"
-COL_KDPI = "kdpi"                 # <-- EDITAR AQUI: nome da coluna numérica do KDPI (0-100)
+COL_TIPO_DOADOR = "classificacao_automatica"
+COL_KDPI = "kdpi"
 
-# SCD e ECD estão na MESMA coluna, como texto ("SCD" ou "ECD").
-# O código abaixo compara o texto (sem diferenciar maiúsc./minúsc. e
-# ignorando espaços nas pontas) para criar as duas colunas binárias
-# usadas nas análises. Se os textos no seu dataset forem diferentes
-# de "SCD"/"ECD" (ex.: "Padrão"/"Expandido", "Standard"/"Expanded"),
-# EDITE os dois valores comparados abaixo (.str.strip().str.upper() == "..."):
-
-# Como SCD e ECD são as DUAS categorias de uma mesma coluna, uma única
-# variável binária já compara os dois grupos (SCD x ECD). Não é preciso
-# gerar duas seções separadas ("SCD x não-SCD" e "ECD x não-ECD"), pois
-# nesse caso elas seriam espelhadas/duplicadas uma da outra.
 if COL_TIPO_DOADOR in df.columns:
     df["_tipo_doador_norm"] = df[COL_TIPO_DOADOR].astype(str).str.strip().str.upper()
 
     df["_grupo_tipo_doador"] = pd.NA
     df.loc[df["_tipo_doador_norm"] == "SCD", "_grupo_tipo_doador"] = 1
     df.loc[df["_tipo_doador_norm"] == "ECD", "_grupo_tipo_doador"] = 0
-    # Linhas com texto diferente de "SCD"/"ECD" (ex.: vazio, DCD, outro)
-    # ficam como NA e não entram na análise, evitando classificação incorreta.
+    
 else:
     df["_tipo_doador_norm"] = None
     df["_grupo_tipo_doador"] = None
 
-# Grupo KDPI > 85% criado automaticamente a partir da coluna COL_KDPI
 if COL_KDPI in df.columns:
     df["_grupo_kdpi85"] = (pd.to_numeric(df[COL_KDPI], errors="coerce") > 85).astype("Int64")
 else:
     df["_grupo_kdpi85"] = None
-
-
-# ==========================================================
-# ==========================================================
-# 🔹 3) SOBREVIDA POR ANO DO TRANSPLANTE, DENTRO DE CADA TIPO
-#        DE DOADOR (SCD E ECD SEPARADOS)
-# ==========================================================
-# ==========================================================
-# Diferente da seção acima (que compara SCD x ECD dentro de cada ano),
-# aqui a lógica é invertida: dentro do grupo SCD, comparam-se os anos
-# entre si; e o mesmo é feito, separadamente, dentro do grupo ECD.
-#
-# A quantidade de curvas (anos) é detectada automaticamente a partir
-# dos dados presentes no dataset (df["ano_tx"].unique()), então quando
-# novos anos/registros forem inseridos na base, os gráficos passam a
-# incluí-los sem precisar editar o código.
 
 def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este grupo"):
     """
@@ -399,16 +325,13 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
 
     cores_tipo = gerar_mapa_cores(anos_tipo)
 
-    # ---------------- CURVAS GLOBAIS DO TIPO DE DOADOR (todos os anos juntos) ----------------
     kmf_global_pac = KaplanMeierFitter()
     kmf_global_pac.fit(dados_tipo["tempo_obito_anos"], dados_tipo["evento_obito"], label="Global")
 
     kmf_global_enx = KaplanMeierFitter()
     kmf_global_enx.fit(dados_tipo["tempo_pe_anos"], dados_tipo["evento_pe"], label="Global")
 
-    # ---------------- TABELA DE SOBREVIDA 1/2/5 ANOS, POR ANO DO TRANSPLANTE ----------------
     st.subheader(f"Sobrevida do Paciente e do Enxerto em 1, 2 e 5 anos — {titulo_secao}")
-
     linhas_ano = []
     for ano in anos_tipo:
         dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
@@ -445,9 +368,7 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
 
     st.dataframe(pd.DataFrame(linhas_ano), use_container_width=True)
 
-    # ---------------- LOG-RANK ENTRE ANOS (dentro do tipo de doador) ----------------
     comparacoes_tipo = [(a1, a2) for i, a1 in enumerate(anos_tipo) for a2 in anos_tipo[i + 1:]]
-
     if comparacoes_tipo:
         st.subheader(f"Comparação Estatística entre Anos (Log-rank) — {titulo_secao}")
 
@@ -485,23 +406,12 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         st.write("Perda de Enxerto (Sobrevida do Enxerto)")
         st.dataframe(pd.DataFrame(resultados_pe_tipo), use_container_width=True)
 
-    # ---------------- CURVAS KM POR ANO ----------------
     col_a, col_b = st.columns(2)
 
-    # ===== PACIENTE =====
     with col_a:
         st.subheader("Paciente – Probabilidade")
         fig1, ax1 = plt.subplots()
         kmf = KaplanMeierFitter()
-
-        # ---- Curvas individuais por ano do transplante (COMENTADO) ----
-        # Mantida apenas a curva "Global" do subgrupo (SCD / ECD / KDPI > 85%).
-        # for ano in anos_tipo:
-        #     dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
-        #     if len(dados_ano) == 0:
-        #         continue
-        #     kmf.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"], label=str(int(ano)))
-        #     kmf.plot(ax=ax1, ci_show=False, linewidth=2, color=cores_tipo.get(ano))
 
         kmf_global_pac.plot(ax=ax1, ci_show=False, color="black", linestyle="--", linewidth=3)
         eixo_prob(ax1, "Probabilidade de Sobrevida")
@@ -510,9 +420,8 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
 
         st.subheader("Paciente – Porcentagem")
         fig2, ax2 = plt.subplots()
-
-        # ---- Curvas individuais por ano do transplante (COMENTADO) ----
-        # Mantida apenas a curva "Global" do subgrupo (SCD / ECD / KDPI > 85%).
+        
+        #Comentado para retirar as linhas dos anos
         # for ano in anos_tipo:
         #     dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
         #     if len(dados_ano) == 0:
@@ -529,12 +438,12 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         ax2.legend(title="Ano do Transplante")
         st.pyplot(fig2)
 
-    # ===== ENXERTO =====
     with col_b:
         st.subheader("Enxerto – Probabilidade")
         fig3, ax3 = plt.subplots()
         kmf = KaplanMeierFitter()
 
+        #Comentado para retirar as linhas dos anos
         #for ano in anos_tipo:
         #    dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
         #    if len(dados_ano) == 0:
@@ -549,7 +458,8 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
 
         st.subheader("Enxerto – Porcentagem")
         fig4, ax4 = plt.subplots()
-
+        
+        #Comentado para retirar as linhas dos anos
         #for ano in anos_tipo:
         #    dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
         #    if len(dados_ano) == 0:
@@ -566,8 +476,6 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         ax4.legend(title="Ano do Transplante")
         st.pyplot(fig4)
 
-
-# ---- Chamadas: um bloco de gráficos por ano para SCD, ECD e KDPI > 85% ----
 if "_tipo_doador_norm" in df.columns:
     analise_por_ano_do_subgrupo(
         df[df["_tipo_doador_norm"] == "SCD"],
