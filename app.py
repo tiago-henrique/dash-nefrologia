@@ -550,14 +550,14 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
         st.subheader("Enxerto – Porcentagem")
         fig4, ax4 = plt.subplots()
 
-        for ano in anos_tipo:
-            dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
-            if len(dados_ano) == 0:
-                continue
-            kmf.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"], label=str(int(ano)))
-            ax4.step(kmf.survival_function_.index,
-                     kmf.survival_function_[str(int(ano))] * 100,
-                     where="post", linewidth=2, color=cores_tipo.get(ano), label=str(int(ano)))
+        #for ano in anos_tipo:
+        #    dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #    if len(dados_ano) == 0:
+        #        continue
+        #    kmf.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"], label=str(int(ano)))
+        #    ax4.step(kmf.survival_function_.index,
+        #             kmf.survival_function_[str(int(ano))] * 100,
+        #             where="post", linewidth=2, color=cores_tipo.get(ano), label=str(int(ano)))
 
         ax4.step(kmf_global_enx.survival_function_.index,
                  kmf_global_enx.survival_function_["Global"] * 100,
