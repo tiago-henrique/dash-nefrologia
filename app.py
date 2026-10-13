@@ -8,7 +8,7 @@ from lifelines.statistics import logrank_test
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
-import streamlit as st
+from io import StringIO
 
 # ================= CONFIGURAÇÃO =================
 st.set_page_config(
@@ -18,34 +18,61 @@ st.set_page_config(
 
 st.title("Análise de Sobrevida – Transplante Renal")
 
-# ================= LEITURA =================
+# ================= LEITURA DOS DADOS DO REDCAP =================
 
-file_path = st.secrets["CAMINHO"]
+@st.cache_data(ttl=300)
+def carregar_dados_redcap():
+    """
+    Exporta os registros do projeto REDCap em CSV.
+    O resultado fica em cache por 5 minutos.
+    """
+    api_url = st.secrets["REDCAP_API_URL"]
+    api_token = st.secrets["REDCAP_API_TOKEN"]
 
-response = requests.head(file_path)
-last_modified = response.headers.get("Last-Modified")
+    payload = {
+        "token": api_token,
+        "content": "record",
+        "action": "export",
+        "format": "csv",
+        "type": "flat",
+        "rawOrLabel": "raw",
+        "rawOrLabelHeaders": "raw",
+        "exportCheckboxLabel": "false",
+        "exportSurveyFields": "false",
+        "exportDataAccessGroups": "false",
+        "returnFormat": "csv"
+    }
 
-if last_modified:
-    dt_utc = parsedate_to_datetime(last_modified)
-    dt_br = dt_utc.astimezone(ZoneInfo("America/Sao_Paulo"))
+    try:
+        response = requests.post(api_url, data=payload, timeout=120)
+        response.raise_for_status()
 
-    st.success(
-        f"Dados atualizados em: {dt_br.strftime('%d/%m/%Y %H:%M:%S')}"
-    )
-else:
-    st.warning("Cabeçalho Last-Modified não encontrado.")
+        # O REDCap pode devolver uma mensagem de erro no corpo da resposta,
+        # mesmo quando a requisição HTTP é concluída.
+        conteudo = response.text.strip()
+        if not conteudo:
+            raise ValueError("A API do REDCap retornou uma resposta vazia.")
 
-# Carregar base
+        if conteudo.upper().startswith(("ERROR", "ERROR:")):
+            raise ValueError(f"Erro retornado pelo REDCap: {conteudo}")
+
+        dados = pd.read_csv(StringIO(conteudo), low_memory=False)
+
+        if dados.empty:
+            st.warning("A exportação do REDCap não retornou registros.")
+
+        return dados
+
+    except Exception as e:
+        raise RuntimeError(f"Não foi possível carregar os dados do REDCap: {e}") from e
+
+
 try:
-    uploaded_file = pd.read_csv(st.secrets['DATABASE'])
+    df = carregar_dados_redcap()
+    st.success(f"Dados carregados do REDCap: {len(df):,} registros.".replace(",", "."))
 except Exception as e:
-    st.error(f"Erro ao carregar o banco de dados: {e}")
+    st.error(str(e))
     st.stop()
-
-df = uploaded_file
-
-#uploaded_file = "indicadores.csv"
-#df = pd.read_csv(uploaded_file)
 
 for col in ["data_tx", "data_obito", "data_pe"]:
     df[col] = pd.to_datetime(df[col], errors="coerce")
