@@ -10,15 +10,12 @@ from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from io import StringIO
 
-# ================= CONFIGURAÇÃO =================
 st.set_page_config(
     page_title="Kaplan-Meier – Transplante Renal",
     layout="wide"
 )
 
 st.title("Análise de Sobrevida – Transplante Renal")
-
-# ================= LEITURA DOS DADOS DO REDCAP =================
 
 @st.cache_data(ttl=300)
 def carregar_dados_redcap():
@@ -47,8 +44,6 @@ def carregar_dados_redcap():
         response = requests.post(api_url, data=payload, timeout=120)
         response.raise_for_status()
 
-        # O REDCap pode devolver uma mensagem de erro no corpo da resposta,
-        # mesmo quando a requisição HTTP é concluída.
         conteudo = response.text.strip()
         if not conteudo:
             raise ValueError("A API do REDCap retornou uma resposta vazia.")
@@ -74,15 +69,12 @@ except Exception as e:
     st.error(str(e))
     st.stop()
 
-# Converte as datas; valores vazios ou inválidos tornam-se NaT.
 for col in ["data_tx", "data_obito", "data_pe"]:
     if col not in df.columns:
         st.error(f"A coluna obrigatória '{col}' não foi encontrada na exportação do REDCap.")
         st.stop()
     df[col] = pd.to_datetime(df[col], errors="coerce")
 
-# Sem a data do transplante não é possível calcular o tempo de acompanhamento.
-# Esses registros causariam NaN nas durações usadas pelo Kaplan-Meier.
 registros_sem_data_tx = int(df["data_tx"].isna().sum())
 if registros_sem_data_tx:
     st.warning(
@@ -367,18 +359,6 @@ else:
     df["_grupo_kdpi85"] = None
 
 def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este grupo"):
-    """
-    Recebe um dataframe já filtrado para um subgrupo (ex.: só SCD, só ECD,
-    ou só KDPI > 85%) e gera:
-    - tabela de sobrevida (paciente e enxerto) em 1/2/5 anos, por ano do transplante
-    - curvas de Kaplan-Meier (probabilidade e porcentagem) por ano do transplante,
-      com a curva "Global" (todos os anos, dentro do subgrupo) sobreposta
-
-    As cores e a quantidade de curvas se ajustam automaticamente à
-    quantidade de anos presentes nos dados filtrados — não é necessário
-    editar nada quando novos anos forem incluídos no dataset.
-    """
-
     st.header(titulo_secao)
 
     if dados_tipo.empty:
