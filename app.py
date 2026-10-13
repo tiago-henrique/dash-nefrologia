@@ -74,8 +74,26 @@ except Exception as e:
     st.error(str(e))
     st.stop()
 
+# Converte as datas; valores vazios ou inválidos tornam-se NaT.
 for col in ["data_tx", "data_obito", "data_pe"]:
+    if col not in df.columns:
+        st.error(f"A coluna obrigatória '{col}' não foi encontrada na exportação do REDCap.")
+        st.stop()
     df[col] = pd.to_datetime(df[col], errors="coerce")
+
+# Sem a data do transplante não é possível calcular o tempo de acompanhamento.
+# Esses registros causariam NaN nas durações usadas pelo Kaplan-Meier.
+registros_sem_data_tx = int(df["data_tx"].isna().sum())
+if registros_sem_data_tx:
+    st.warning(
+        f"{registros_sem_data_tx} registro(s) foram excluídos da análise por não "
+        "possuírem uma data de transplante válida (data_tx)."
+    )
+    df = df.loc[df["data_tx"].notna()].copy()
+
+if df.empty:
+    st.error("Não há registros com data de transplante válida para realizar a análise.")
+    st.stop()
 
 df["ano_tx"] = df["data_tx"].dt.year
 data_censura = pd.to_datetime(datetime.today().date())
