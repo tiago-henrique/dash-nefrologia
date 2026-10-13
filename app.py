@@ -251,7 +251,13 @@ with col1:
                             color="black", linestyle="--", linewidth=3)
 
     eixo_prob(ax1, "Probabilidade de Sobrevida")
-    ax1.legend(title="Ano do Transplante")
+    ax1.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig1.subplots_adjust(bottom=0.30)
     st.pyplot(fig1)
 
     st.subheader("Paciente – Porcentagem")
@@ -276,7 +282,13 @@ with col1:
                 label="Global")
 
     eixo_percent(ax2, "Sobrevida (%)")
-    ax2.legend(title="Ano do Transplante")
+    ax2.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig2.subplots_adjust(bottom=0.30)
     st.pyplot(fig2)
 
 with col2:
@@ -294,7 +306,13 @@ with col2:
                         color="black", linestyle="--", linewidth=3)
 
     eixo_prob(ax3, "Probabilidade de Sobrevida do Enxerto")
-    ax3.legend(title="Ano do Transplante")
+    ax3.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig3.subplots_adjust(bottom=0.30)
     st.pyplot(fig3)
 
     st.subheader("Enxerto – Porcentagem")
@@ -319,7 +337,13 @@ with col2:
                 label="Global")
 
     eixo_percent(ax4, "Sobrevida do Enxerto (%)")
-    ax4.legend(title="Ano do Transplante")
+    ax4.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig4.subplots_adjust(bottom=0.30)
     st.pyplot(fig4)
 
 
@@ -460,7 +484,13 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
 
         kmf_global_pac.plot(ax=ax1, ci_show=False, color="black", linestyle="--", linewidth=3)
         eixo_prob(ax1, "Probabilidade de Sobrevida")
-        ax1.legend(title="Ano do Transplante")
+        ax1.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig1.subplots_adjust(bottom=0.30)
         st.pyplot(fig1)
 
         st.subheader("Paciente – Porcentagem")
@@ -480,7 +510,13 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
                  kmf_global_pac.survival_function_["Global"] * 100,
                  where="post", linewidth=3, linestyle="--", color="black", label="Global")
         eixo_percent(ax2, "Sobrevida (%)")
-        ax2.legend(title="Ano do Transplante")
+        ax2.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig2.subplots_adjust(bottom=0.30)
         st.pyplot(fig2)
 
     with col_b:
@@ -498,7 +534,13 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
 
         kmf_global_enx.plot(ax=ax3, ci_show=False, color="black", linestyle="--", linewidth=3)
         eixo_prob(ax3, "Probabilidade de Sobrevida do Enxerto")
-        ax3.legend(title="Ano do Transplante")
+        ax3.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig3.subplots_adjust(bottom=0.30)
         st.pyplot(fig3)
 
         st.subheader("Enxerto – Porcentagem")
@@ -518,7 +560,13 @@ def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este gr
                  kmf_global_enx.survival_function_["Global"] * 100,
                  where="post", linewidth=3, linestyle="--", color="black", label="Global")
         eixo_percent(ax4, "Sobrevida do Enxerto (%)")
-        ax4.legend(title="Ano do Transplante")
+        ax4.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig4.subplots_adjust(bottom=0.30)
         st.pyplot(fig4)
 
 if "_tipo_doador_norm" in df.columns:
