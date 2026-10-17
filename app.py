@@ -1,0 +1,613 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import requests
+from matplotlib.ticker import PercentFormatter
+from lifelines import KaplanMeierFitter
+from lifelines.statistics import logrank_test
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
+from io import StringIO
+
+st.set_page_config(
+    page_title="Kaplan-Meier – Transplante Renal",
+    layout="wide"
+)
+
+st.title("Análise de Sobrevida – Transplante Renal")
+
+@st.cache_data(ttl=300)
+def carregar_dados_redcap():
+    """
+    Exporta os registros do projeto REDCap em CSV.
+    O resultado fica em cache por 5 minutos.
+    """
+    api_url = st.secrets["REDCAP_API_URL"]
+    api_token = st.secrets["REDCAP_API_TOKEN"]
+
+    payload = {
+        "token": api_token,
+        "content": "record",
+        "action": "export",
+        "format": "csv",
+        "type": "flat",
+        "rawOrLabel": "raw",
+        "rawOrLabelHeaders": "raw",
+        "exportCheckboxLabel": "false",
+        "exportSurveyFields": "false",
+        "exportDataAccessGroups": "false",
+        "returnFormat": "csv"
+    }
+
+    try:
+        response = requests.post(api_url, data=payload, timeout=120)
+        response.raise_for_status()
+
+        conteudo = response.text.strip()
+        if not conteudo:
+            raise ValueError("A API do REDCap retornou uma resposta vazia.")
+
+        if conteudo.upper().startswith(("ERROR", "ERROR:")):
+            raise ValueError(f"Erro retornado pelo REDCap: {conteudo}")
+
+        dados = pd.read_csv(StringIO(conteudo), low_memory=False)
+
+        if dados.empty:
+            st.warning("A exportação do REDCap não retornou registros.")
+
+        return dados
+
+    except Exception as e:
+        raise RuntimeError(f"Não foi possível carregar os dados do REDCap: {e}") from e
+
+
+try:
+    df = carregar_dados_redcap()
+    st.success(f"Dados carregados do REDCap: {len(df):,} registros.".replace(",", "."))
+except Exception as e:
+    st.error(str(e))
+    st.stop()
+
+for col in ["data_tx", "data_obito", "data_pe"]:
+    if col not in df.columns:
+        st.error(f"A coluna obrigatória '{col}' não foi encontrada na exportação do REDCap.")
+        st.stop()
+    df[col] = pd.to_datetime(df[col], errors="coerce")
+
+registros_sem_data_tx = int(df["data_tx"].isna().sum())
+if registros_sem_data_tx:
+    st.warning(
+        f"{registros_sem_data_tx} registro(s) foram excluídos da análise por não "
+        "possuírem uma data de transplante válida (data_tx)."
+    )
+    df = df.loc[df["data_tx"].notna()].copy()
+
+if df.empty:
+    st.error("Não há registros com data de transplante válida para realizar a análise.")
+    st.stop()
+
+df["ano_tx"] = df["data_tx"].dt.year
+
+# --- Filtro de período (ano inicial e final do transplante) ---
+ano_min = int(df["ano_tx"].min())
+ano_max = int(df["ano_tx"].max())
+
+st.sidebar.header("Período de análise")
+ano_inicial = st.sidebar.number_input(
+    "Ano inicial",
+    min_value=ano_min,
+    max_value=ano_max,
+    value=ano_min,
+    step=1,
+)
+ano_final = st.sidebar.number_input(
+    "Ano final",
+    min_value=ano_min,
+    max_value=ano_max,
+    value=ano_max,
+    step=1,
+)
+
+if ano_inicial > ano_final:
+    st.error("O ano inicial não pode ser maior que o ano final.")
+    st.stop()
+
+df = df.loc[(df["ano_tx"] >= ano_inicial) & (df["ano_tx"] <= ano_final)].copy()
+st.info(f"Período analisado: {int(ano_inicial)} a {int(ano_final)} ({len(df)} transplantes).")
+
+if df.empty:
+    st.error("Não há transplantes no período selecionado.")
+    st.stop()
+# --- Fim do filtro de período ---
+
+data_censura = pd.to_datetime(datetime.today().date())
+
+df["evento_obito"] = df["data_obito"].notna().astype(int)
+df["tempo_obito"] = (
+    df["data_obito"].fillna(data_censura) - df["data_tx"]
+).dt.days
+
+df["evento_pe"] = df["data_pe"].notna().astype(int)
+df["tempo_pe"] = (
+    df["data_pe"].fillna(data_censura) - df["data_tx"]
+).dt.days
+
+df["tempo_obito_anos"] = df["tempo_obito"] / 365.25
+df["tempo_pe_anos"] = df["tempo_pe"] / 365.25
+
+anos = sorted(df["ano_tx"].dropna().unique())
+
+tabela_resumo = (
+    df.groupby("ano_tx")
+    .agg(
+        total_transplantes=("ano_tx", "count"),
+        obitos=("evento_obito", "sum"),
+        perda_enxerto=("evento_pe", "sum")
+    )
+    .reset_index()
+    .sort_values("ano_tx")
+)
+
+tabela_resumo["taxa_obito_%"] = (
+    tabela_resumo["obitos"] / tabela_resumo["total_transplantes"] * 100
+).round(1)
+
+tabela_resumo["taxa_perda_enxerto_%"] = (
+    tabela_resumo["perda_enxerto"] / tabela_resumo["total_transplantes"] * 100
+).round(1)
+
+st.subheader("Resumo de Eventos por Ano do Transplante")
+st.dataframe(tabela_resumo, use_container_width=True)
+
+comparacoes = [(a1, a2) for i, a1 in enumerate(anos)
+                for a2 in anos[i+1:]]
+
+st.subheader("Comparação Estatística – Óbito (Log-rank)")
+resultados_obito = []
+
+for a1, a2 in comparacoes:
+    d1 = df[df["ano_tx"] == a1]
+    d2 = df[df["ano_tx"] == a2]
+
+    if len(d1) > 0 and len(d2) > 0:
+        res = logrank_test(
+            d1["tempo_obito_anos"], d2["tempo_obito_anos"],
+            event_observed_A=d1["evento_obito"],
+            event_observed_B=d2["evento_obito"]
+        )
+        resultados_obito.append({
+            "Comparação": f"{a1} x {a2}",
+            "p-valor": round(res.p_value, 4)
+        })
+
+st.dataframe(pd.DataFrame(resultados_obito), use_container_width=True)
+
+st.subheader("Comparação Estatística – Perda de Enxerto (Log-rank)")
+resultados_pe = []
+
+for a1, a2 in comparacoes:
+    d1 = df[df["ano_tx"] == a1]
+    d2 = df[df["ano_tx"] == a2]
+
+    if len(d1) > 0 and len(d2) > 0:
+        res = logrank_test(
+            d1["tempo_pe_anos"], d2["tempo_pe_anos"],
+            event_observed_A=d1["evento_pe"],
+            event_observed_B=d2["evento_pe"]
+        )
+        resultados_pe.append({
+            "Comparação": f"{a1} x {a2}",
+            "p-valor": round(res.p_value, 4)
+        })
+
+st.dataframe(pd.DataFrame(resultados_pe), use_container_width=True)
+
+st.subheader("Sobrevida do Paciente em 1, 2 e 5 anos")
+
+linhas = []
+for ano in anos:
+    dados = df[df["ano_tx"] == ano]
+    if len(dados) > 0:
+        kmf = KaplanMeierFitter()
+        kmf.fit(dados["tempo_obito_anos"], dados["evento_obito"])
+        linhas.append({
+            "Ano": ano,
+            "1 ano (%)": round(kmf.predict(1) * 100, 1),
+            "2 anos (%)": round(kmf.predict(2) * 100, 1),
+            "5 anos (%)": round(kmf.predict(5) * 100, 1),
+        })
+
+st.dataframe(pd.DataFrame(linhas), use_container_width=True)
+
+total_global = len(df)
+total_obitos = df["evento_obito"].sum()
+total_pe = df["evento_pe"].sum()
+
+tabela_global = pd.DataFrame({
+    "Total Transplantes": [total_global],
+    "Óbitos": [total_obitos],
+    "Taxa Óbito (%)": [round(total_obitos / total_global * 100, 1)],
+    "Perda de Enxerto": [total_pe],
+    "Taxa Perda Enxerto (%)": [round(total_pe / total_global * 100, 1)]
+})
+
+st.subheader("Análise Global da Coorte")
+st.dataframe(tabela_global, use_container_width=True)
+
+kmf_global_obito = KaplanMeierFitter()
+kmf_global_obito.fit(df["tempo_obito_anos"], df["evento_obito"], label="Global")
+
+kmf_global_pe = KaplanMeierFitter()
+kmf_global_pe.fit(df["tempo_pe_anos"], df["evento_pe"], label="Global")
+
+def gerar_mapa_cores(lista_valores, colormap_nome="tab10"):
+    cmap = plt.get_cmap(colormap_nome if len(lista_valores) <= 10 else "tab20")
+    return {valor: cmap(i % cmap.N) for i, valor in enumerate(lista_valores)}
+
+cores = gerar_mapa_cores(anos)
+
+def eixo_prob(ax, ylabel):
+    ax.set_xlabel("Tempo após o transplante (anos)")
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(0.5, 1)
+    ax.grid(True)
+
+def eixo_percent(ax, ylabel):
+    ax.set_xlabel("Tempo após o transplante (anos)")
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(50, 100)
+    ax.yaxis.set_major_formatter(PercentFormatter(100))
+    ax.grid(True)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Paciente – Probabilidade")
+    fig1, ax1 = plt.subplots()
+    kmf = KaplanMeierFitter()
+
+    for ano in anos:
+        dados = df[df["ano_tx"] == ano]
+        kmf.fit(dados["tempo_obito_anos"], dados["evento_obito"], label=str(ano))
+        kmf.plot(ax=ax1, ci_show=False, linewidth=2, color=cores.get(ano))
+
+    kmf_global_obito.plot(ax=ax1, ci_show=False,
+                            color="black", linestyle="--", linewidth=3)
+
+    eixo_prob(ax1, "Probabilidade de Sobrevida")
+    ax1.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig1.subplots_adjust(bottom=0.30)
+    st.pyplot(fig1)
+
+    st.subheader("Paciente – Porcentagem")
+    fig2, ax2 = plt.subplots()
+
+    for ano in anos:
+        dados = df[df["ano_tx"] == ano]
+        kmf.fit(dados["tempo_obito_anos"], dados["evento_obito"], label=str(ano))
+        ax2.step(kmf.survival_function_.index,
+                    kmf.survival_function_[str(ano)] * 100,
+                    where="post",
+                    linewidth=2,
+                    color=cores.get(ano),
+                    label=str(ano))
+
+    ax2.step(kmf_global_obito.survival_function_.index,
+                kmf_global_obito.survival_function_["Global"] * 100,
+                where="post",
+                linewidth=3,
+                linestyle="--",
+                color="black",
+                label="Global")
+
+    eixo_percent(ax2, "Sobrevida (%)")
+    ax2.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig2.subplots_adjust(bottom=0.30)
+    st.pyplot(fig2)
+
+with col2:
+
+    st.subheader("Enxerto – Probabilidade")
+    fig3, ax3 = plt.subplots()
+    kmf = KaplanMeierFitter()
+
+    for ano in anos:
+        dados = df[df["ano_tx"] == ano]
+        kmf.fit(dados["tempo_pe_anos"], dados["evento_pe"], label=str(ano))
+        kmf.plot(ax=ax3, ci_show=False, linewidth=2, color=cores.get(ano))
+
+    kmf_global_pe.plot(ax=ax3, ci_show=False,
+                        color="black", linestyle="--", linewidth=3)
+
+    eixo_prob(ax3, "Probabilidade de Sobrevida do Enxerto")
+    ax3.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig3.subplots_adjust(bottom=0.30)
+    st.pyplot(fig3)
+
+    st.subheader("Enxerto – Porcentagem")
+    fig4, ax4 = plt.subplots()
+
+    for ano in anos:
+        dados = df[df["ano_tx"] == ano]
+        kmf.fit(dados["tempo_pe_anos"], dados["evento_pe"], label=str(ano))
+        ax4.step(kmf.survival_function_.index,
+                    kmf.survival_function_[str(ano)] * 100,
+                    where="post",
+                    linewidth=2,
+                    color=cores.get(ano),
+                    label=str(ano))
+
+    ax4.step(kmf_global_pe.survival_function_.index,
+                kmf_global_pe.survival_function_["Global"] * 100,
+                where="post",
+                linewidth=3,
+                linestyle="--",
+                color="black",
+                label="Global")
+
+    eixo_percent(ax4, "Sobrevida do Enxerto (%)")
+    ax4.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=4,
+        title="Ano do Transplante"
+    )
+    fig4.subplots_adjust(bottom=0.30)
+    st.pyplot(fig4)
+
+
+COL_TIPO_DOADOR = "classificacao_automatica"
+COL_KDPI = "kdpi"
+
+if COL_TIPO_DOADOR in df.columns:
+    df["_tipo_doador_norm"] = df[COL_TIPO_DOADOR].astype(str).str.strip().str.upper()
+
+    df["_grupo_tipo_doador"] = pd.NA
+    df.loc[df["_tipo_doador_norm"] == "SCD", "_grupo_tipo_doador"] = 1
+    df.loc[df["_tipo_doador_norm"] == "ECD", "_grupo_tipo_doador"] = 0
+    
+else:
+    df["_tipo_doador_norm"] = None
+    df["_grupo_tipo_doador"] = None
+
+if COL_KDPI in df.columns:
+    df["_grupo_kdpi85"] = (pd.to_numeric(df[COL_KDPI], errors="coerce") > 85).astype("Int64")
+else:
+    df["_grupo_kdpi85"] = None
+
+def analise_por_ano_do_subgrupo(dados_tipo, titulo_secao, nome_subgrupo="este grupo"):
+    st.header(titulo_secao)
+
+    if dados_tipo.empty:
+        st.warning(f"Não há pacientes em '{nome_subgrupo}' no dataset.")
+        return
+
+    dados_tipo = dados_tipo.copy()
+    anos_tipo = sorted(dados_tipo["ano_tx"].dropna().unique())
+
+    if len(anos_tipo) == 0:
+        st.warning(f"Não há anos de transplante válidos para '{nome_subgrupo}'.")
+        return
+
+    cores_tipo = gerar_mapa_cores(anos_tipo)
+
+    kmf_global_pac = KaplanMeierFitter()
+    kmf_global_pac.fit(dados_tipo["tempo_obito_anos"], dados_tipo["evento_obito"], label="Global")
+
+    kmf_global_enx = KaplanMeierFitter()
+    kmf_global_enx.fit(dados_tipo["tempo_pe_anos"], dados_tipo["evento_pe"], label="Global")
+
+    st.subheader(f"Sobrevida do Paciente e do Enxerto em 1, 2 e 5 anos — {titulo_secao}")
+    linhas_ano = []
+    for ano in anos_tipo:
+        dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        if len(dados_ano) == 0:
+            continue
+
+        kmf_pac = KaplanMeierFitter()
+        kmf_pac.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"])
+
+        kmf_enx = KaplanMeierFitter()
+        kmf_enx.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"])
+
+        linhas_ano.append({
+            "Ano": int(ano),
+            "N": len(dados_ano),
+            "Paciente 1 ano (%)": round(kmf_pac.predict(1) * 100, 1),
+            "Paciente 2 anos (%)": round(kmf_pac.predict(2) * 100, 1),
+            "Paciente 5 anos (%)": round(kmf_pac.predict(5) * 100, 1),
+            "Enxerto 1 ano (%)": round(kmf_enx.predict(1) * 100, 1),
+            "Enxerto 2 anos (%)": round(kmf_enx.predict(2) * 100, 1),
+            "Enxerto 5 anos (%)": round(kmf_enx.predict(5) * 100, 1),
+        })
+
+    linhas_ano.append({
+        "Ano": "Global",
+        "N": len(dados_tipo),
+        "Paciente 1 ano (%)": round(kmf_global_pac.predict(1) * 100, 1),
+        "Paciente 2 anos (%)": round(kmf_global_pac.predict(2) * 100, 1),
+        "Paciente 5 anos (%)": round(kmf_global_pac.predict(5) * 100, 1),
+        "Enxerto 1 ano (%)": round(kmf_global_enx.predict(1) * 100, 1),
+        "Enxerto 2 anos (%)": round(kmf_global_enx.predict(2) * 100, 1),
+        "Enxerto 5 anos (%)": round(kmf_global_enx.predict(5) * 100, 1),
+    })
+
+    st.dataframe(pd.DataFrame(linhas_ano), use_container_width=True)
+
+    comparacoes_tipo = [(a1, a2) for i, a1 in enumerate(anos_tipo) for a2 in anos_tipo[i + 1:]]
+    if comparacoes_tipo:
+        st.subheader(f"Comparação Estatística entre Anos (Log-rank) — {titulo_secao}")
+
+        resultados_obito_tipo = []
+        resultados_pe_tipo = []
+
+        for a1, a2 in comparacoes_tipo:
+            d1 = dados_tipo[dados_tipo["ano_tx"] == a1]
+            d2 = dados_tipo[dados_tipo["ano_tx"] == a2]
+
+            if len(d1) > 0 and len(d2) > 0:
+                res_obito = logrank_test(
+                    d1["tempo_obito_anos"], d2["tempo_obito_anos"],
+                    event_observed_A=d1["evento_obito"],
+                    event_observed_B=d2["evento_obito"]
+                )
+                resultados_obito_tipo.append({
+                    "Comparação": f"{int(a1)} x {int(a2)}",
+                    "p-valor": round(res_obito.p_value, 4)
+                })
+
+                res_pe = logrank_test(
+                    d1["tempo_pe_anos"], d2["tempo_pe_anos"],
+                    event_observed_A=d1["evento_pe"],
+                    event_observed_B=d2["evento_pe"]
+                )
+                resultados_pe_tipo.append({
+                    "Comparação": f"{int(a1)} x {int(a2)}",
+                    "p-valor": round(res_pe.p_value, 4)
+                })
+
+        st.write("Óbito (Sobrevida do Paciente)")
+        st.dataframe(pd.DataFrame(resultados_obito_tipo), use_container_width=True)
+
+        st.write("Perda de Enxerto (Sobrevida do Enxerto)")
+        st.dataframe(pd.DataFrame(resultados_pe_tipo), use_container_width=True)
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.subheader("Paciente – Probabilidade")
+        fig1, ax1 = plt.subplots()
+        kmf = KaplanMeierFitter()
+
+        kmf_global_pac.plot(ax=ax1, ci_show=False, color="black", linestyle="--", linewidth=3)
+        eixo_prob(ax1, "Probabilidade de Sobrevida")
+        ax1.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig1.subplots_adjust(bottom=0.30)
+        st.pyplot(fig1)
+
+        st.subheader("Paciente – Porcentagem")
+        fig2, ax2 = plt.subplots()
+        
+        #Comentado para retirar as linhas dos anos
+        # for ano in anos_tipo:
+        #     dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #     if len(dados_ano) == 0:
+        #         continue
+        #     kmf.fit(dados_ano["tempo_obito_anos"], dados_ano["evento_obito"], label=str(int(ano)))
+        #     ax2.step(kmf.survival_function_.index,
+        #              kmf.survival_function_[str(int(ano))] * 100,
+        #              where="post", linewidth=2, color=cores_tipo.get(ano), label=str(int(ano)))
+
+        ax2.step(kmf_global_pac.survival_function_.index,
+                 kmf_global_pac.survival_function_["Global"] * 100,
+                 where="post", linewidth=3, linestyle="--", color="black", label="Global")
+        eixo_percent(ax2, "Sobrevida (%)")
+        ax2.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig2.subplots_adjust(bottom=0.30)
+        st.pyplot(fig2)
+
+    with col_b:
+        st.subheader("Enxerto – Probabilidade")
+        fig3, ax3 = plt.subplots()
+        kmf = KaplanMeierFitter()
+
+        #Comentado para retirar as linhas dos anos
+        #for ano in anos_tipo:
+        #    dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #    if len(dados_ano) == 0:
+        #        continue
+        #    kmf.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"], label=str(int(ano)))
+        #    kmf.plot(ax=ax3, ci_show=False, linewidth=2, color=cores_tipo.get(ano))
+
+        kmf_global_enx.plot(ax=ax3, ci_show=False, color="black", linestyle="--", linewidth=3)
+        eixo_prob(ax3, "Probabilidade de Sobrevida do Enxerto")
+        ax3.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig3.subplots_adjust(bottom=0.30)
+        st.pyplot(fig3)
+
+        st.subheader("Enxerto – Porcentagem")
+        fig4, ax4 = plt.subplots()
+        
+        #Comentado para retirar as linhas dos anos
+        #for ano in anos_tipo:
+        #    dados_ano = dados_tipo[dados_tipo["ano_tx"] == ano]
+        #    if len(dados_ano) == 0:
+        #        continue
+        #    kmf.fit(dados_ano["tempo_pe_anos"], dados_ano["evento_pe"], label=str(int(ano)))
+        #    ax4.step(kmf.survival_function_.index,
+        #             kmf.survival_function_[str(int(ano))] * 100,
+        #             where="post", linewidth=2, color=cores_tipo.get(ano), label=str(int(ano)))
+
+        ax4.step(kmf_global_enx.survival_function_.index,
+                 kmf_global_enx.survival_function_["Global"] * 100,
+                 where="post", linewidth=3, linestyle="--", color="black", label="Global")
+        eixo_percent(ax4, "Sobrevida do Enxerto (%)")
+        ax4.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+            ncol=4,
+            title="Ano do Transplante"
+        )
+        fig4.subplots_adjust(bottom=0.30)
+        st.pyplot(fig4)
+
+if "_tipo_doador_norm" in df.columns:
+    analise_por_ano_do_subgrupo(
+        df[df["_tipo_doador_norm"] == "SCD"],
+        titulo_secao="Sobrevida por Ano do Transplante — Doadores SCD",
+        nome_subgrupo="Doadores SCD",
+    )
+
+    analise_por_ano_do_subgrupo(
+        df[df["_tipo_doador_norm"] == "ECD"],
+        titulo_secao="Sobrevida por Ano do Transplante — Doadores ECD",
+        nome_subgrupo="Doadores ECD",
+    )
+else:
+    st.warning(
+        "Coluna de tipo de doador não encontrada. "
+        "Verifique o mapeamento COL_TIPO_DOADOR no início da seção anterior do script."
+    )
+
+if "_grupo_kdpi85" in df.columns:
+    analise_por_ano_do_subgrupo(
+        df[df["_grupo_kdpi85"] == 1],
+        titulo_secao="Sobrevida por Ano do Transplante — KDPI > 85%",
+        nome_subgrupo="KDPI > 85%",
+    )
+else:
+    st.warning(
+        "Coluna de KDPI não encontrada. "
+        "Verifique o mapeamento COL_KDPI no início da seção anterior do script."
+    )
