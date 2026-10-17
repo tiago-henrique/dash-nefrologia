@@ -61,10 +61,9 @@ def carregar_dados_redcap():
     except Exception as e:
         raise RuntimeError(f"Não foi possível carregar os dados do REDCap: {e}") from e
 
-
 try:
     df = carregar_dados_redcap()
-    st.success(f"Dados carregados do REDCap: {len(df):,} registros.".replace(",", "."))
+#    st.success(f"Dados carregados do REDCap: {len(df):,} registros.".replace(",", "."))
 except Exception as e:
     st.error(str(e))
     st.stop()
@@ -77,10 +76,10 @@ for col in ["data_tx", "data_obito", "data_pe"]:
 
 registros_sem_data_tx = int(df["data_tx"].isna().sum())
 if registros_sem_data_tx:
-    st.warning(
-        f"{registros_sem_data_tx} registro(s) foram excluídos da análise por não "
-        "possuírem uma data de transplante válida (data_tx)."
-    )
+    #st.warning(
+    #    f"{registros_sem_data_tx} registro(s) foram excluídos da análise por não "
+    #    "possuírem uma data de transplante válida (data_tx)."
+    #)
     df = df.loc[df["data_tx"].notna()].copy()
 
 if df.empty:
