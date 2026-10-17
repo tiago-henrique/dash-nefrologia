@@ -22,10 +22,7 @@ ANO_FINAL = 2026
 
 @st.cache_data(ttl=300)
 def carregar_dados_redcap():
-    """
-    Exporta os registros do projeto REDCap em CSV.
-    O resultado fica em cache por 5 minutos.
-    """
+
     api_url = st.secrets["REDCAP_API_URL"]
     api_token = st.secrets["REDCAP_API_TOKEN"]
 
