@@ -17,6 +17,15 @@ st.set_page_config(
 
 st.title("Análise de Sobrevida – Transplante Renal")
 
+# ----------------------------------------------------------------------
+# CONFIGURAÇÃO DO PERÍODO (ano do transplante)
+# Altere aqui o ano inicial e o ano final. Use None para considerar
+# automaticamente o menor / maior ano existente na base.
+# Exemplo: ANO_INICIAL = 2015 ; ANO_FINAL = 2024
+# ----------------------------------------------------------------------
+ANO_INICIAL = None
+ANO_FINAL = None
+
 @st.cache_data(ttl=300)
 def carregar_dados_redcap():
     """
@@ -93,21 +102,9 @@ df["ano_tx"] = df["data_tx"].dt.year
 ano_min = int(df["ano_tx"].min())
 ano_max = int(df["ano_tx"].max())
 
-st.sidebar.header("Período de análise")
-ano_inicial = st.sidebar.number_input(
-    "Ano inicial",
-    min_value=ano_min,
-    max_value=ano_max,
-    value=ano_min,
-    step=1,
-)
-ano_final = st.sidebar.number_input(
-    "Ano final",
-    min_value=ano_min,
-    max_value=ano_max,
-    value=ano_max,
-    step=1,
-)
+# Se ANO_INICIAL / ANO_FINAL forem None, usa o menor / maior ano da base
+ano_inicial = ANO_INICIAL if ANO_INICIAL is not None else ano_min
+ano_final = ANO_FINAL if ANO_FINAL is not None else ano_max
 
 if ano_inicial > ano_final:
     st.error("O ano inicial não pode ser maior que o ano final.")
