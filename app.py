@@ -17,14 +17,8 @@ st.set_page_config(
 
 st.title("Análise de Sobrevida – Transplante Renal")
 
-# ----------------------------------------------------------------------
-# CONFIGURAÇÃO DO PERÍODO (ano do transplante)
-# Altere aqui o ano inicial e o ano final. Use None para considerar
-# automaticamente o menor / maior ano existente na base.
-# Exemplo: ANO_INICIAL = 2015 ; ANO_FINAL = 2024
-# ----------------------------------------------------------------------
-ANO_INICIAL = None
-ANO_FINAL = None
+ANO_INICIAL = 2022
+ANO_FINAL = 2026
 
 @st.cache_data(ttl=300)
 def carregar_dados_redcap():
@@ -98,11 +92,9 @@ if df.empty:
 
 df["ano_tx"] = df["data_tx"].dt.year
 
-# --- Filtro de período (ano inicial e final do transplante) ---
 ano_min = int(df["ano_tx"].min())
 ano_max = int(df["ano_tx"].max())
 
-# Se ANO_INICIAL / ANO_FINAL forem None, usa o menor / maior ano da base
 ano_inicial = ANO_INICIAL if ANO_INICIAL is not None else ano_min
 ano_final = ANO_FINAL if ANO_FINAL is not None else ano_max
 
@@ -116,7 +108,6 @@ st.info(f"Período analisado: {int(ano_inicial)} a {int(ano_final)} ({len(df)} t
 if df.empty:
     st.error("Não há transplantes no período selecionado.")
     st.stop()
-# --- Fim do filtro de período ---
 
 data_censura = pd.to_datetime(datetime.today().date())
 
